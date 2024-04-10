@@ -50,7 +50,7 @@ def main(iterations, fine_tuning_iterations, adversarial_model_name, judge_model
     #   test_model = Claude(test_model_name)
     #   shorthand = 'claude'
 
-    # roleplay_prompts = data_prep.get_roleplay_prompts()
+    roleplay_prompts = data_prep.get_roleplay_prompts()
     # initial_data, initial_labels = data_prep.create_judge_training_set()
 
     # initial_judge_data_jsonl = data_prep.create_judge_jsonl(initial_data, initial_labels)
@@ -98,6 +98,7 @@ def main(iterations, fine_tuning_iterations, adversarial_model_name, judge_model
         judge_jsonl_ft = []
 
         for i in range(iterations):
+            few_shot = random.sample(roleplay_prompts, 3)
             start = time.time()
             print(f"Round {i+1}:")
 
@@ -112,8 +113,10 @@ def main(iterations, fine_tuning_iterations, adversarial_model_name, judge_model
             if not len(adversarial_generations): # ensuring we don't repeat prompts or add noncompliant responses
                while is_noncompliant:
                   problematic_prompt, problematic_in_tokens, problematic_out_tokens = adversaryLM.generate_problematic_prompt(few_shot)
+                  print('1', problematic_prompt)
                   is_noncompliant = noncompliant(problematic_prompt)
             while is_noncompliant or is_similar:
+               print('2', problematic_prompt)
                problematic_prompt, problematic_in_tokens, problematic_out_tokens = adversaryLM.generate_problematic_prompt(few_shot)
                is_noncompliant = noncompliant(problematic_prompt)
                is_similar = similar_prompt_exists(problematic_prompt, adversarial_generations)
@@ -134,6 +137,7 @@ def main(iterations, fine_tuning_iterations, adversarial_model_name, judge_model
               else:
                 judge_rating = int(judge_answer)
             except:
+              print('3', judge_answer)
               pass
             print(f"Judge's answer: {judge_answer}")
             print(judge_rating)
@@ -174,7 +178,8 @@ def main(iterations, fine_tuning_iterations, adversarial_model_name, judge_model
                 print(error)
 
             if total_1s > 0: # label is 1, set this threshold based on what you want
-                few_shot = problematic_prompt # to make it a GAN, move this statement to next if statement
+                # few_shot = problematic_prompt # to make it a GAN, move this statement to next if statement
+                roleplay_prompts.append(problematic_prompt)
                 true_label = 1
                 data_prep.append_to_judge_jsonl(problematic_prompt, 1, judge_jsonl_ft)
                 if judge_rating == 0:
@@ -213,10 +218,10 @@ def main(iterations, fine_tuning_iterations, adversarial_model_name, judge_model
         # if ft_iteration == 0: # for when we are using gpt-3.5-turbo as base, not pretrained
         #    adversaryLM = load_adversary(adversaryLM.fine_tune('../data/adversary_fine_tune.jsonl'))
         # else:
-        if len(adversary_jsonl_ft) >= 10:
-          append_to_jsonl(adversary_jsonl_ft, '../data/adversary_fine_tune.jsonl')
-          adversaryLM = load_adversary(adversaryLM.fine_tune('../data/adversary_fine_tune.jsonl'))
-          adversary_jsonl_ft = []
+        # if len(adversary_jsonl_ft) >= 10:
+        #   append_to_jsonl(adversary_jsonl_ft, '../data/adversary_fine_tune.jsonl')
+        #   adversaryLM = load_adversary(adversaryLM.fine_tune('../data/adversary_fine_tune.jsonl'))
+        #   adversary_jsonl_ft = []
         # if ft_iteration == 0:
         #    judgeLM = load_judge(judgeLM.fine_tune('../data/judge_fine_tune.jsonl'))
         # else:
@@ -248,8 +253,8 @@ if __name__ == "__main__":
     # pretrained_adversary = 'ft:gpt-3.5-turbo-0613:personal:adversary:8fb1u0Co'
     # pretrained_judge = 'ft:gpt-3.5-turbo-0613:personal:judge:8l0xfLNi'
 
-    pretrained_adversary = 'gpt-3.5-turbo'
-    pretrained_judge = 'gpt-3.5-turbo'
-    test_model_name = 'gpt-3.5-turbo'
+    pretrained_adversary = 'gpt-4-turbo-preview'
+    pretrained_judge = 'gpt-4-turbo-preview'
+    test_model_name = 'gpt-4-turbo-preview'
 
     main(15, 10, pretrained_adversary, pretrained_judge, test_model_name)

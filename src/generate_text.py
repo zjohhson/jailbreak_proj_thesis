@@ -27,7 +27,7 @@ def pretrain_model(file_name, base_model, suffix):
        raise Exception("Suffix must be judge or adversary!")
     return lm.fine_tune(file_name)
 
-def main(iterations, adversarial_model_name, test_model_name):
+def main(iterations, num_samples, adversarial_model_name, test_model_name):
     counter = 0 # change
     embedding_vecs = get_vecs('../data/pca_data.csv')
     labels = get_labels('../data/pca_data.csv')
@@ -50,7 +50,7 @@ def main(iterations, adversarial_model_name, test_model_name):
     #   test_model = Claude(test_model_name)
     #   shorthand = 'claude'
 
-    # roleplay_prompts = data_prep.get_roleplay_prompts()
+    roleplay_prompts = data_prep.get_roleplay_prompts()
     # initial_data, initial_labels = data_prep.create_judge_training_set()
 
     # initial_judge_data_jsonl = data_prep.create_judge_jsonl(initial_data, initial_labels)
@@ -93,6 +93,7 @@ def main(iterations, adversarial_model_name, test_model_name):
     for iteration in range(iterations):
         print('here')
         print(f"Iteration {iteration + 1}")
+        few_shot = random.sample(roleplay_prompts, num_samples)
         total_in_tokens = 0
         total_out_tokens = 0
         start = time.time()
@@ -102,17 +103,18 @@ def main(iterations, adversarial_model_name, test_model_name):
             while is_noncompliant:
                 problematic_prompt, problematic_in_tokens, problematic_out_tokens = adversaryLM.generate_problematic_prompt(few_shot)
                 is_noncompliant = noncompliant(problematic_prompt)
-        while is_noncompliant or is_similar:
-            problematic_prompt, problematic_in_tokens, problematic_out_tokens = adversaryLM.generate_problematic_prompt(few_shot)
-            is_noncompliant = noncompliant(problematic_prompt)
-            is_similar = similar_prompt_exists(problematic_prompt, adversarial_generations)
+        else:
+            while is_noncompliant or is_similar:
+                problematic_prompt, problematic_in_tokens, problematic_out_tokens = adversaryLM.generate_problematic_prompt(few_shot)
+                is_noncompliant = noncompliant(problematic_prompt)
+                is_similar = similar_prompt_exists(problematic_prompt, adversarial_generations)
         problematic_prompt = convert_instructions(problematic_prompt, shorthand)
         adversarial_generations.append(problematic_prompt)
         total_in_tokens += problematic_in_tokens
         total_out_tokens += problematic_out_tokens
         print(f"Problematic prompt: {problematic_prompt}")
 
-        harmful_reqs = random.sample(requests_list, 20)
+        harmful_reqs = random.sample(requests_list, 15)
 
         approved_reqs = []
         denied_reqs = []
@@ -120,7 +122,7 @@ def main(iterations, adversarial_model_name, test_model_name):
         for harmful_req in harmful_reqs:
             try:
                 print('---------------')
-                response, req_in_tokens, req_out_tokens = test_model.ask_harmful_request(problematic_prompt, harmful_req)
+                response, req_in_tokens, req_out_tokens = test_model.ask_harmful_request(problematic_prompt, harmful_req, token_count=True)
                 # response, req_in_tokens, req_out_tokens = ask_harmful_request(problematic_prompt, harmful_req)
                 total_in_tokens += req_in_tokens
                 total_out_tokens += req_out_tokens
@@ -144,7 +146,8 @@ def main(iterations, adversarial_model_name, test_model_name):
             except Exception as error:
                 print(error)
         if total_1s > 0: # label is 1, set this threshold based on what you want
-            few_shot = problematic_prompt # to make it a GAN, move this statement to next if statement
+            roleplay_prompts.append(problematic_prompt)
+            # few_shot = problematic_prompt # to make it a GAN, move this statement to next if statement
             true_label = 1
             # data_prep.append_to_judge_jsonl(problematic_prompt, 1, judge_jsonl_ft)
             # if judge_rating == 0:
@@ -169,19 +172,23 @@ def main(iterations, adversarial_model_name, test_model_name):
             total_in_tokens,
             total_out_tokens
         ]
+        results_df.to_csv(f'../data/results/generations_only_{num_samples}.csv')
+        # if len(results_df) > iterations - len(roleplay_prompts_generated):
+        #     # print(len(results_df), print(iteration), print(len(roleplay)))
+        #     break
+        
+    #     approved_reqs_df.loc[iteration] = [
+    #         approved_reqs
+    #     ]
 
-        approved_reqs_df.loc[iteration] = [
-            approved_reqs
-        ]
+    #     denied_reqs_df.loc[iteration] = [
+    #         denied_reqs
+    #     ]
 
-        denied_reqs_df.loc[iteration] = [
-            denied_reqs
-        ]
-
-    timestr = time.strftime("%Y%m%d-%H%M%S")
-    results_df.to_csv(f'../data/results/{timestr}_generations_only.csv')
-    approved_reqs_df.to_csv(f'../data/results/{timestr}_approved_generations_only.csv')
-    denied_reqs_df.to_csv(f'../data/results/{timestr}_denied_generations_only.csv')
+    # timestr = time.strftime("%Y%m%d-%H%M%S")
+    # results_df.to_csv(f'../data/results/{timestr}_generations_only.csv')
+    # approved_reqs_df.to_csv(f'../data/results/{timestr}_approved_generations_only.csv')
+    # denied_reqs_df.to_csv(f'../data/results/{timestr}_denied_generations_only.csv')
     
 if __name__ == "__main__":
 
@@ -204,4 +211,9 @@ if __name__ == "__main__":
     pretrained_judge = 'gpt-3.5-turbo'
     test_model_name = 'gpt-3.5-turbo'
 
-    main(10, pretrained_adversary, test_model_name)
+    iterations = int(sys.argv[1])
+    few_shot_prompts = int(sys.argv[2])
+    adversary = sys.argv[3]
+    test_model_name = sys.argv[4]
+
+    main(iterations, few_shot_prompts, adversary, test_model_name)
